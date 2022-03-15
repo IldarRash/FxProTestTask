@@ -6,6 +6,7 @@ import com.example.fxpro.common.OhlcPeriod;
 import com.example.fxpro.common.Quote;
 import com.example.fxpro.reactive.dao.SimpleReactiveDao;
 import com.example.fxpro.simple.service.QuoteListener;
+import com.github.benmanes.caffeine.cache.Cache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -25,11 +27,11 @@ public class ReactiveOhlcServiceImpl implements QuoteListener {
             Sinks.many().multicast().directBestEffort();
 
     private final SimpleReactiveDao simpleReactiveDao;
-    private final Map<OhlcKey, Ohlc> cache = new ConcurrentHashMap<>();
+    private final Cache<OhlcKey, Ohlc> cache;
 
     public Flux<Ohlc> getCurrent(long instrumentId, OhlcPeriod period) {
         log.info("Get connect with current Ohlc and channel with update quotes = {}", instrumentId);
-        return Mono.justOrEmpty(cache.get(OhlcKey.of(period, instrumentId)))
+        return Mono.justOrEmpty(cache.getIfPresent(OhlcKey.of(period, instrumentId)))
                 .mergeWith(liveOhlc.asFlux());
     }
 
@@ -50,12 +52,12 @@ public class ReactiveOhlcServiceImpl implements QuoteListener {
         for (var period : OhlcPeriod.values()) {
             var key = OhlcKey.of(period, quote.getInstrumentId());
             liveOhlc.tryEmitNext(
-                    cache.merge(
+                    cache.asMap().merge(
                             key,
                             Ohlc.create(quote.getPrice(), quote.getUtcTimestamp(),
                                     period,
                                     quote.getInstrumentId()),
-                            (k, old) -> old.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId())
+                            (old, curr) -> old.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId())
                     )
             );
         }

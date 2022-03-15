@@ -3,6 +3,7 @@ package com.example.fxpro.reactive.services;
 import com.example.fxpro.common.Ohlc;
 import com.example.fxpro.common.OhlcPeriod;
 import com.example.fxpro.common.TestQuote;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -10,6 +11,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
+
+import java.time.Duration;
 
 import static com.example.fxpro.common.OhlcPeriod.M1;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,12 +26,14 @@ class ReactiveOhlcServiceImplTest {
     @Autowired
     private ReactiveOhlcServiceImpl ohlcService;
 
-    @Test
+    @Test()
     @DisplayName("Test ohlc with no quotes")
     void testCurrentOhlcNoQuotes() {
         var current = ohlcService.getCurrent(0L, M1);
-        assertThat(current.blockFirst())
-                .isNull();
+
+        Assertions.assertThrows(IllegalStateException.class, () -> {
+            current.blockFirst(Duration.ofMillis(100));
+        });
     }
 
     @ParameterizedTest
@@ -38,8 +43,8 @@ class ReactiveOhlcServiceImplTest {
         var instrumentId = 666L;
         ohlcService.onQuote(new TestQuote(123.0, instrumentId, System.currentTimeMillis()));
 
-        var ohlcM1 = ohlcService.getCurrent(instrumentId, ohlcPeriod).blockFirst();
-        assertThat(ohlcM1)
+        var ohlc = ohlcService.getCurrent(instrumentId, ohlcPeriod).blockFirst(Duration.ofMillis(100));
+        assertThat(ohlc)
                 .isNotNull()
                 .returns(123.0, Ohlc::getOpenPrice)
                 .returns(123.0, Ohlc::getHighPrice)
@@ -54,9 +59,10 @@ class ReactiveOhlcServiceImplTest {
     void testOhlcThatHaventQuote(OhlcPeriod period) {
         ohlcService.onQuote(new TestQuote(123.0, 666L, System.currentTimeMillis()));
 
-        var ohlc = ohlcService.getCurrent(777L, period).blockFirst();
-        assertThat(ohlc)
-                .isNull();
+        var current = ohlcService.getCurrent(777L, period);
+        Assertions.assertThrows(IllegalStateException.class, () -> {
+            current.blockFirst(Duration.ofMillis(100));
+        });
     }
 
     @ParameterizedTest
@@ -70,7 +76,7 @@ class ReactiveOhlcServiceImplTest {
 
 
         ohlcService.onQuote(new TestQuote(129.0, instrumentId, System.currentTimeMillis()));
-        
+
         clientOne.doOnNext(ohlc -> {
             assertThat(ohlc)
                     .isNotNull()
@@ -89,4 +95,6 @@ class ReactiveOhlcServiceImplTest {
                     .returns(129.0, Ohlc::getClosePrice);
         }).subscribe();
     }
+
+
 }

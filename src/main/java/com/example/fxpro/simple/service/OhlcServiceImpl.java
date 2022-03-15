@@ -54,7 +54,7 @@ public class OhlcServiceImpl implements OhlcService {
             ohlcCache.asMap()
                     .merge(key,
                             Ohlc.create(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId()),
-                            (k, oldValue) -> oldValue.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId())
+                            (old, curr) -> old.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId())
                     );
         }
     }
