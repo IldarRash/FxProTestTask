@@ -11,12 +11,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static com.example.fxpro.common.OhlcPeriod.*;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class OhlcServiceImpl implements OhlcService {
     private final Cache<OhlcKey, Ohlc> ohlcCache;
+    private final Map<OhlcPeriod, ReentrantLock> locsForPeriod = Map.of(
+            M1, new ReentrantLock(),
+            H1, new ReentrantLock(),
+            D1, new ReentrantLock()
+    );
     private final OhlcDao ohlcDao;
 
     @Override
@@ -42,12 +51,11 @@ public class OhlcServiceImpl implements OhlcService {
         for (var period : OhlcPeriod.values()) {
             var key = OhlcKey.of(period, quote.getInstrumentId());
 
-            var ohlc = ohlcCache.getIfPresent(key);
-            if (ohlc == null) {
-                ohlcCache.put(key, Ohlc.create(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId()));
-            } else {
-                ohlcCache.put(key, ohlc.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId()));
-            }
+            ohlcCache.asMap()
+                    .merge(key,
+                            Ohlc.create(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId()),
+                            (k, oldValue) -> oldValue.update(quote.getPrice(), quote.getUtcTimestamp(), period, quote.getInstrumentId())
+                    );
         }
     }
 }
